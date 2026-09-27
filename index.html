@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Chess Game - Dracool</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #111; font-family: sans-serif; user-select: none; }
+        #ui { position: absolute; top: 10px; left: 10px; color: white; background: rgba(0,0,0,0.7); padding: 10px 15px; border-radius: 8px; pointer-events: none; }
+        #status { font-weight: bold; color: #4ade80; }
+        #reset { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); padding: 10px 20px; background: #3b82f6; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; }
+        #reset:hover { background: #2563eb; }
+    </style>
+  <script type="module" crossorigin src="./assets/index-C1hlAXCc.js"></script>
+</head>
+<body>
+    <div id="ui">
+        <h2>3D Chess</h2>
+        <p>Turn: <span id="status">White's Turn</span></p>
+    </div>
+    <button id="reset">Reset Game</button>
+</body>
+</html>
