@@ -3,21 +3,148 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D Chess Game - Dracool</title>
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' https://cdn.jsdelivr.net; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:;">
+    <title>3D Chess - Dracool 🦇</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #111; font-family: sans-serif; user-select: none; }
-        #ui { position: absolute; top: 10px; left: 10px; color: white; background: rgba(0,0,0,0.7); padding: 10px 15px; border-radius: 8px; pointer-events: none; }
-        #status { font-weight: bold; color: #4ade80; }
-        #reset { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); padding: 10px 20px; background: #3b82f6; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; }
-        #reset:hover { background: #2563eb; }
+        :root {
+            --bg: #1e1e24;
+            --surface: rgba(20,20,26,0.85);
+            --text: #f5f5f7;
+            --accent: #3b82f6;
+            --accent-hover: #2563eb;
+            --success: #4ade80;
+            --danger: #f43f5e;
+            --warning: #f6d365;
+            --radius: 8px;
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0; overflow: hidden;
+            background: var(--bg);
+            font: 400 14px/1.4 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+            color: var(--text); user-select: none;
+        }
+        #hud {
+            position: absolute; top: 12px; left: 12px;
+            background: var(--surface); backdrop-filter: blur(8px);
+            padding: 12px 16px; border-radius: var(--radius);
+            pointer-events: none; min-width: 180px;
+        }
+        #hud h1 { margin: 0 0 6px; font: 600 18px/1.2 inherit; }
+        #status { font-weight: 600; color: var(--success); }
+        #status.thinking { color: var(--accent); }
+        #status.check { color: var(--warning); }
+
+        #controls {
+            position: absolute; bottom: 20px; left: 50%;
+            transform: translateX(-50%);
+            display: flex; gap: 10px; flex-wrap: wrap;
+            justify-content: center;
+            background: var(--surface); backdrop-filter: blur(8px);
+            padding: 10px 14px; border-radius: var(--radius);
+            max-width: calc(100vw - 24px);
+        }
+        button, select {
+            font: inherit; color: var(--text);
+            background: var(--accent); border: none;
+            padding: 10px 16px; min-height: 44px; min-width: 44px;
+            border-radius: 6px; cursor: pointer;
+            transition: background 120ms ease-out;
+        }
+        button:hover:not(:disabled) { background: var(--accent-hover); }
+        button:disabled { opacity: 0.4; cursor: not-allowed; }
+        button.ghost { background: transparent; border: 1px solid rgba(255,255,255,0.2); }
+        select {
+            background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+
+        #history-panel {
+            position: absolute; right: 12px; top: 12px; bottom: 90px;
+            width: 220px;
+            background: var(--surface); backdrop-filter: blur(8px);
+            border-radius: var(--radius);
+            padding: 12px;
+            overflow-y: auto;
+            transition: transform 220ms ease-out;
+        }
+        #history-panel.hidden { transform: translateX(240px); }
+        #history-panel h3 { margin: 0 0 8px; font: 600 14px/1.2 inherit; }
+        #history-list {
+            font: 500 13px/1.6 ui-monospace, 'SF Mono', monospace;
+            display: grid; grid-template-columns: 24px 1fr 1fr; gap: 2px 8px;
+        }
+        #history-list .num { color: rgba(255,255,255,0.4); }
+        #history-list .move.last { background: rgba(246,211,101,0.15); border-radius: 3px; padding: 0 4px; }
+
+        #toggle-history {
+            position: absolute; right: 12px; bottom: 20px;
+            padding: 8px 12px; font-size: 12px;
+        }
+
+        #overlay {
+            position: fixed; inset: 0;
+            background: rgba(0,0,0,0.5); backdrop-filter: blur(4px);
+            display: none; align-items: center; justify-content: center;
+            z-index: 10;
+        }
+        #overlay.show { display: flex; }
+        #overlay .card {
+            background: var(--surface); backdrop-filter: blur(12px);
+            padding: 24px; border-radius: 12px;
+            text-align: center; max-width: 320px;
+        }
+        #overlay h2 { margin: 0 0 8px; }
+        #overlay p { margin: 0 0 16px; opacity: 0.85; }
+        #overlay .actions { display: flex; gap: 10px; justify-content: center; }
+
+        @media (max-width: 640px) {
+            #history-panel { display: none; }
+            #toggle-history { display: none; }
+            #hud { padding: 8px 12px; min-width: 140px; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            * { transition: none !important; }
+        }
     </style>
-  <script type="module" crossorigin src="./assets/index-C1hlAXCc.js"></script>
+  <script type="module" crossorigin src="./assets/index-DQbDZ3QZ.js"></script>
 </head>
 <body>
-    <div id="ui">
-        <h2>3D Chess</h2>
-        <p>Turn: <span id="status">White's Turn</span></p>
+    <div id="hud">
+        <h1>🦇 3D Chess</h1>
+        <div>Turn: <span id="status">White's Turn</span></div>
     </div>
-    <button id="reset">Reset Game</button>
+
+    <div id="history-panel">
+        <h3>Move History</h3>
+        <div id="history-list"></div>
+    </div>
+    <button id="toggle-history" class="ghost">Hide History</button>
+
+    <div id="controls">
+        <select id="mode-select" aria-label="Game mode">
+            <option value="hvh">👥 Human vs Human</option>
+            <option value="hvai">🤖 vs Computer</option>
+        </select>
+        <select id="difficulty-select" aria-label="AI difficulty" style="display:none">
+            <option value="easy">Easy</option>
+            <option value="medium" selected>Medium</option>
+            <option value="hard">Hard</option>
+        </select>
+        <button id="undo-btn" disabled aria-label="Undo last move">↶ Undo</button>
+        <button id="reset-btn" aria-label="New game">🔄 New Game</button>
+    </div>
+
+    <div id="overlay" role="dialog" aria-modal="true">
+        <div class="card">
+            <h2 id="overlay-title">Game Over</h2>
+            <p id="overlay-msg"></p>
+            <div class="actions">
+                <button id="overlay-new">New Game</button>
+                <button id="overlay-close" class="ghost">Close</button>
+            </div>
+        </div>
+    </div>
+
 </body>
 </html>
