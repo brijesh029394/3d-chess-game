@@ -1,6 +1,17 @@
-# 3D Chess Game 🦇
+# Animal Kingdom 3D Chess 🦁
 
-Interactive 3D chess built with Three.js + chess.js. Auto-deployed to GitHub Pages via CI/CD.
+Interactive animated-animal 3D chess built with Three.js + chess.js. Auto-deployed to GitHub Pages via CI/CD.
+
+## Animal pieces
+
+- Pawns: rabbits
+- Rooks: elephants
+- Knights: horses
+- Bishops: foxes
+- Queens: peacocks
+- Kings: lions
+
+Every animal has lightweight procedural idle animation, and the two armies use distinct color palettes for clear gameplay.
 
 ## Local dev
 ```

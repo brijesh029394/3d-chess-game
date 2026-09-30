@@ -153,153 +153,154 @@ for (let i=0;i<8;i++){
     const lr2 = makeLabel(rank); lr2.position.set(OFF + 0.6, -0.09, (7-i)-OFF); boardGroup.add(lr2);
 }
 
-// ========== REALISTIC PIECES (LatheGeometry Staunton-style) ==========
-function latheProfile(points, seg=48){
-    const pts = points.map(p => new THREE.Vector2(p[0], p[1]));
-    return new THREE.LatheGeometry(pts, seg);
+// ========== ANIMATED ANIMAL CHESS ARMY ==========
+const animalGeometries = {
+    sphere: new THREE.SphereGeometry(1, 20, 16),
+    eye: new THREE.SphereGeometry(0.045, 10, 8),
+    nose: new THREE.SphereGeometry(0.06, 10, 8),
+    ear: new THREE.ConeGeometry(0.10, 0.38, 10),
+    leg: new THREE.CapsuleGeometry(0.065, 0.18, 4, 8),
+    tusk: new THREE.ConeGeometry(0.035, 0.24, 10),
+    mane: new THREE.TorusGeometry(0.25, 0.09, 8, 20),
+    crown: new THREE.ConeGeometry(0.20, 0.20, 5),
+    feather: new THREE.SphereGeometry(0.11, 12, 8)
+};
+
+function animalMaterial(hex, roughness=0.72) {
+    return new THREE.MeshStandardMaterial({ color: hex, roughness, metalness: 0.02 });
 }
 
-function pawnGeom() {
-    return latheProfile([
-        [0.00,0.00],[0.36,0.00],[0.36,0.05],[0.28,0.08],[0.20,0.14],
-        [0.12,0.22],[0.10,0.40],[0.14,0.52],[0.20,0.58],[0.15,0.62],
-        [0.15,0.70],[0.22,0.74],[0.22,0.82],[0.00,0.86]
-    ]);
-}
-function rookGeom() {
-    // body via lathe, battlements via boxes on top
-    const body = latheProfile([
-        [0.00,0.00],[0.40,0.00],[0.40,0.06],[0.32,0.10],[0.28,0.16],
-        [0.24,0.30],[0.24,0.90],[0.30,0.94],[0.30,1.02],[0.00,1.02]
-    ]);
-    return body;
-}
-function bishopGeom() {
-    return latheProfile([
-        [0.00,0.00],[0.40,0.00],[0.40,0.06],[0.32,0.10],[0.28,0.18],
-        [0.22,0.40],[0.18,0.62],[0.14,0.74],[0.20,0.80],[0.20,0.86],
-        [0.15,0.90],[0.15,1.00],[0.18,1.06],[0.14,1.14],[0.08,1.22],
-        [0.00,1.28]
-    ]);
-}
-function queenGeom() {
-    return latheProfile([
-        [0.00,0.00],[0.42,0.00],[0.42,0.06],[0.34,0.10],[0.30,0.18],
-        [0.24,0.45],[0.20,0.72],[0.15,0.86],[0.22,0.92],[0.22,1.00],
-        [0.16,1.04],[0.16,1.12],[0.22,1.18],[0.22,1.26],[0.00,1.30]
-    ]);
-}
-function kingBodyGeom() {
-    return latheProfile([
-        [0.00,0.00],[0.44,0.00],[0.44,0.06],[0.36,0.10],[0.32,0.18],
-        [0.26,0.50],[0.22,0.80],[0.16,0.94],[0.24,1.00],[0.24,1.10],
-        [0.18,1.14],[0.18,1.24],[0.24,1.28],[0.24,1.34],[0.00,1.36]
-    ]);
-}
-function knightGeom(){
-    // Composite: pedestal (lathe) + a stylized horse silhouette (extrude)
-    const pedestal = latheProfile([
-        [0.00,0.00],[0.40,0.00],[0.40,0.06],[0.32,0.10],[0.28,0.18],
-        [0.24,0.32],[0.24,0.42],[0.00,0.42]
-    ]);
-    // Horse head silhouette (2D shape, extruded)
-    const shape = new THREE.Shape();
-    // rough Staunton knight silhouette (side profile)
-    shape.moveTo(-0.05, 0.42);
-    shape.lineTo(0.25, 0.42);
-    shape.bezierCurveTo(0.30, 0.55, 0.15, 0.60, 0.10, 0.68);
-    shape.bezierCurveTo(0.30, 0.72, 0.40, 0.85, 0.36, 1.05);
-    shape.bezierCurveTo(0.34, 1.15, 0.25, 1.20, 0.18, 1.20);
-    shape.bezierCurveTo(0.05, 1.20, -0.06, 1.15, -0.20, 1.20);
-    shape.bezierCurveTo(-0.30, 1.18, -0.30, 1.05, -0.22, 0.95);
-    shape.bezierCurveTo(-0.12, 0.85, -0.10, 0.75, -0.15, 0.62);
-    shape.bezierCurveTo(-0.20, 0.55, -0.15, 0.48, -0.05, 0.42);
-    const head = new THREE.ExtrudeGeometry(shape, { depth: 0.22, bevelEnabled: true, bevelSize: 0.03, bevelThickness: 0.03, bevelSegments: 4, curveSegments: 24 });
-    head.translate(0, 0, -0.11);
-    // merge is not available without BufferGeometryUtils; return group instead
-    return { pedestal, head };
+function addPart(parent, geometry, material, position, scale=[1,1,1], rotation=[0,0,0], name='') {
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.position.set(...position);
+    mesh.scale.set(...scale);
+    mesh.rotation.set(...rotation);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    mesh.name = name;
+    parent.add(mesh);
+    return mesh;
 }
 
-const rookTopGeom = new THREE.BoxGeometry(0.14, 0.16, 0.14);
-const kingCrossVGeom = new THREE.BoxGeometry(0.10, 0.32, 0.10);
-const kingCrossHGeom = new THREE.BoxGeometry(0.24, 0.10, 0.10);
-const queenPointGeom = new THREE.ConeGeometry(0.05, 0.14, 8);
+function addFace(parent, y, z, mats, wide=0.12) {
+    addPart(parent, animalGeometries.eye, mats.eye, [-wide,y,z]);
+    addPart(parent, animalGeometries.eye, mats.eye, [ wide,y,z]);
+    addPart(parent, animalGeometries.nose, mats.nose, [0,y-0.09,z+0.025], [1.15,0.75,0.75]);
+}
 
-function pieceMaterial(color) {
-    return new THREE.MeshPhysicalMaterial({
-        color: color === 'w' ? 0xf5f2e8 : 0x1a1a1a,
-        roughness: color === 'w' ? 0.35 : 0.28,
-        metalness: 0.02,
-        clearcoat: 0.35,
-        clearcoatRoughness: 0.25,
-        sheen: 0.15,
-        sheenColor: color === 'w' ? 0xffffff : 0x111111
-    });
+function addFourLegs(parent, mats, y=0.26, spreadX=0.18, spreadZ=0.18) {
+    const legs = [];
+    for (const x of [-spreadX, spreadX]) for (const z of [-spreadZ, spreadZ]) {
+        legs.push(addPart(parent, animalGeometries.leg, mats.body, [x,y,z], [1,1,1], [0,0,0], 'leg'));
+    }
+    return legs;
+}
+
+function makeRabbit(g, mats) {
+    addPart(g, animalGeometries.sphere, mats.body, [0,0.44,0], [0.25,0.32,0.24]);
+    const head = addPart(g, animalGeometries.sphere, mats.body, [0,0.72,0.06], [0.22,0.22,0.21], [0,0,0], 'head');
+    addPart(g, animalGeometries.ear, mats.body, [-0.10,1.00,0.04], [0.72,1,0.60], [0,0,-0.10], 'ear');
+    addPart(g, animalGeometries.ear, mats.body, [ 0.10,1.00,0.04], [0.72,1,0.60], [0,0, 0.10], 'ear');
+    addFace(g, 0.75, 0.24, mats, 0.08);
+    addPart(g, animalGeometries.sphere, mats.accent, [0,0.43,-0.23], [0.11,0.11,0.11], [0,0,0], 'tail');
+    g.userData.animParts = { head, ears: g.children.filter(x=>x.name==='ear') };
+}
+
+function makeElephant(g, mats) {
+    addPart(g, animalGeometries.sphere, mats.body, [0,0.48,0], [0.34,0.36,0.35]);
+    const head = addPart(g, animalGeometries.sphere, mats.body, [0,0.72,0.15], [0.31,0.29,0.28], [0,0,0], 'head');
+    addPart(g, animalGeometries.sphere, mats.inner, [-0.29,0.75,0.12], [0.17,0.24,0.08], [0,0,0.12], 'ear');
+    addPart(g, animalGeometries.sphere, mats.inner, [ 0.29,0.75,0.12], [0.17,0.24,0.08], [0,0,-0.12], 'ear');
+    const trunk = addPart(g, animalGeometries.leg, mats.body, [0,0.48,0.38], [0.8,1.35,0.8], [Math.PI/2,0,0], 'trunk');
+    for (const x of [-0.13,0.13]) addPart(g, animalGeometries.tusk, mats.ivory, [x,0.58,0.39], [1,1,1], [Math.PI/2,0,0]);
+    addFourLegs(g, mats, 0.20, 0.21, 0.20);
+    addFace(g, 0.77, 0.40, mats, 0.12);
+    g.userData.animParts = { head, trunk };
+}
+
+function makeHorse(g, mats) {
+    addPart(g, animalGeometries.sphere, mats.body, [0,0.48,0], [0.28,0.34,0.39]);
+    addPart(g, animalGeometries.leg, mats.body, [0,0.72,0.12], [1.25,1.35,1.25], [0.28,0,0]);
+    const head = addPart(g, animalGeometries.sphere, mats.body, [0,0.94,0.21], [0.23,0.24,0.30], [0.18,0,0], 'head');
+    for (const x of [-0.11,0.11]) addPart(g, animalGeometries.ear, mats.body, [x,1.22,0.14], [0.58,0.72,0.52], [0,0,x*0.8], 'ear');
+    addPart(g, animalGeometries.sphere, mats.mane, [0,0.86,-0.09], [0.25,0.42,0.08], [0,0,0], 'mane');
+    addFourLegs(g, mats, 0.20, 0.18, 0.22);
+    addFace(g, 0.99, 0.49, mats, 0.09);
+    g.userData.animParts = { head };
+}
+
+function makeFox(g, mats) {
+    addPart(g, animalGeometries.sphere, mats.body, [0,0.45,0], [0.28,0.34,0.31]);
+    const head = addPart(g, animalGeometries.sphere, mats.body, [0,0.78,0.12], [0.28,0.27,0.25], [0,0,0], 'head');
+    for (const x of [-0.16,0.16]) {
+        addPart(g, animalGeometries.ear, mats.body, [x,1.06,0.08], [0.85,0.95,0.72], [0,0,x*1.5], 'ear');
+    }
+    addPart(g, animalGeometries.sphere, mats.ivory, [0,0.72,0.32], [0.18,0.13,0.17]);
+    addFace(g, 0.82, 0.37, mats, 0.10);
+    const tail = addPart(g, animalGeometries.sphere, mats.body, [0,0.42,-0.34], [0.19,0.19,0.42], [0.65,0,0], 'tail');
+    addPart(tail, animalGeometries.sphere, mats.ivory, [0,0,-0.85], [0.85,0.85,0.40]);
+    addFourLegs(g, mats, 0.19, 0.18, 0.17);
+    g.userData.animParts = { head, tail };
+}
+
+function makePeacock(g, mats) {
+    addPart(g, animalGeometries.sphere, mats.body, [0,0.49,0.02], [0.23,0.38,0.25]);
+    addPart(g, animalGeometries.leg, mats.accent, [0,0.74,0.08], [0.85,1.2,0.85]);
+    const head = addPart(g, animalGeometries.sphere, mats.accent, [0,1.02,0.10], [0.18,0.19,0.18], [0,0,0], 'head');
+    addFace(g, 1.05, 0.27, mats, 0.07);
+    const tail = new THREE.Group();
+    tail.position.set(0,0.64,-0.18);
+    tail.name = 'tail';
+    for (let i=0;i<7;i++) {
+        const a = -1.05 + i*0.35;
+        const feather = addPart(tail, animalGeometries.feather, i%2 ? mats.feather : mats.accent,
+            [Math.sin(a)*0.45, Math.cos(a)*0.36, -0.03], [0.85,1.65,0.40], [0,0,-a]);
+        addPart(feather, animalGeometries.eye, mats.gold, [0,0.55,0.72], [1.25,1.25,0.7]);
+    }
+    g.add(tail);
+    for (const x of [-0.07,0.07]) addPart(g, animalGeometries.leg, mats.gold, [x,0.18,0.02], [0.48,0.75,0.48]);
+    g.userData.animParts = { head, tail };
+}
+
+function makeLion(g, mats) {
+    addPart(g, animalGeometries.sphere, mats.body, [0,0.47,0], [0.31,0.36,0.33]);
+    addPart(g, animalGeometries.mane, mats.mane, [0,0.83,0.09], [1.25,1.25,1], [Math.PI/2,0,0]);
+    const head = addPart(g, animalGeometries.sphere, mats.body, [0,0.84,0.13], [0.25,0.25,0.23], [0,0,0], 'head');
+    for (const x of [-0.19,0.19]) addPart(g, animalGeometries.sphere, mats.body, [x,1.02,0.10], [0.10,0.12,0.07]);
+    addFace(g, 0.88, 0.34, mats, 0.10);
+    addPart(g, animalGeometries.crown, mats.gold, [0,1.18,0.09], [0.9,0.9,0.9]);
+    addFourLegs(g, mats, 0.19, 0.20, 0.18);
+    const tail = addPart(g, animalGeometries.leg, mats.body, [0,0.48,-0.34], [0.68,1.45,0.68], [0.9,0,0], 'tail');
+    addPart(tail, animalGeometries.sphere, mats.mane, [0,-0.25,0], [1.25,1.25,1.25]);
+    g.userData.animParts = { head, tail };
 }
 
 function pieceMesh(type, color) {
     const g = new THREE.Group();
-    const mat = pieceMaterial(color);
+    const light = color === 'w';
+    const mats = {
+        body: animalMaterial(light ? 0xf0d8a8 : 0x59677f),
+        inner: animalMaterial(light ? 0xe8a9a2 : 0x8695ad),
+        accent: animalMaterial(light ? 0x35a7c9 : 0x8e5ad7),
+        mane: animalMaterial(light ? 0xb66b2d : 0x252b38),
+        feather: animalMaterial(light ? 0x39c67a : 0xb64d72),
+        ivory: animalMaterial(0xfff2d2),
+        gold: animalMaterial(0xf5c84c, 0.42),
+        eye: animalMaterial(0x11151a, 0.35),
+        nose: animalMaterial(light ? 0x5b352c : 0x1a1d25, 0.55)
+    };
 
-    if (type === 'n') {
-        const kn = knightGeom();
-        const p = new THREE.Mesh(kn.pedestal, mat);
-        p.castShadow = true; p.receiveShadow = true;
-        g.add(p);
-        const h = new THREE.Mesh(kn.head, mat);
-        h.castShadow = true; h.receiveShadow = true;
-        h.position.y = 0;
-        // face the correct way based on color (knights face opponent)
-        h.rotation.y = color === 'w' ? -Math.PI/2 : Math.PI/2;
-        g.add(h);
-    } else {
-        let geom;
-        if (type === 'p') geom = pawnGeom();
-        else if (type === 'r') geom = rookGeom();
-        else if (type === 'b') geom = bishopGeom();
-        else if (type === 'q') geom = queenGeom();
-        else if (type === 'k') geom = kingBodyGeom();
-        const body = new THREE.Mesh(geom, mat);
-        body.castShadow = true; body.receiveShadow = true;
-        g.add(body);
+    if (type === 'p') makeRabbit(g, mats);
+    else if (type === 'r') makeElephant(g, mats);
+    else if (type === 'n') makeHorse(g, mats);
+    else if (type === 'b') makeFox(g, mats);
+    else if (type === 'q') makePeacock(g, mats);
+    else if (type === 'k') makeLion(g, mats);
 
-        if (type === 'r') {
-            // 4 battlements
-            for (let i=0;i<4;i++){
-                const b = new THREE.Mesh(rookTopGeom, mat);
-                const ang = (i*Math.PI/2) + Math.PI/4;
-                b.position.set(Math.cos(ang)*0.20, 1.08, Math.sin(ang)*0.20);
-                b.castShadow = true;
-                g.add(b);
-            }
-        }
-        if (type === 'k') {
-            const cv = new THREE.Mesh(kingCrossVGeom, mat);
-            cv.position.y = 1.50;
-            cv.castShadow = true;
-            g.add(cv);
-            const ch = new THREE.Mesh(kingCrossHGeom, mat);
-            ch.position.y = 1.48;
-            ch.castShadow = true;
-            g.add(ch);
-        }
-        if (type === 'q') {
-            // crown of 5 small points
-            for (let i=0;i<5;i++){
-                const ang = (i/5)*Math.PI*2;
-                const pt = new THREE.Mesh(queenPointGeom, mat);
-                pt.position.set(Math.cos(ang)*0.14, 1.36, Math.sin(ang)*0.14);
-                pt.castShadow = true;
-                g.add(pt);
-            }
-            const orb = new THREE.Mesh(new THREE.SphereGeometry(0.06,12,12), mat);
-            orb.position.y = 1.32;
-            orb.castShadow = true;
-            g.add(orb);
-        }
-    }
-
-    // Scale so tallest (king) ~ 1.4 units. Everything below is auto-shorter from geometry.
+    g.rotation.y = light ? 0 : Math.PI;
+    g.userData.pieceType = type;
+    g.userData.phase = Math.random() * Math.PI * 2;
+    g.userData.baseY = 0;
     return g;
 }
 
@@ -555,6 +556,33 @@ function resetGame(){
     controls.update();
 }
 
+function animateAnimals(now){
+    const time = now * 0.001;
+    for (const animal of pieceMap.values()) {
+        const phase = animal.userData.phase || 0;
+        const parts = animal.userData.animParts || {};
+        const breath = Math.sin(time * 2.2 + phase);
+        animal.scale.y = 1 + breath * 0.018;
+        animal.rotation.z = Math.sin(time * 1.4 + phase) * 0.018;
+
+        if (parts.head) {
+            parts.head.rotation.y = Math.sin(time * 1.15 + phase) * 0.12;
+            parts.head.rotation.z = Math.sin(time * 1.8 + phase) * 0.035;
+        }
+        if (parts.ears) {
+            parts.ears.forEach((ear, i) => {
+                ear.rotation.x = Math.sin(time * 3.1 + phase + i * 0.8) * 0.10;
+            });
+        }
+        if (parts.tail) {
+            parts.tail.rotation.y = Math.sin(time * 2.6 + phase) * 0.18;
+        }
+        if (parts.trunk) {
+            parts.trunk.rotation.z = Math.sin(time * 1.9 + phase) * 0.12;
+        }
+    }
+}
+
 // ========== BOOT ==========
 addEventListener('resize', ()=>{
     camera.aspect = innerWidth/innerHeight;
@@ -568,6 +596,7 @@ function loop(){
     for (let i=animations.length-1;i>=0;i--){
         if (animations[i].update(now)) animations.splice(i,1);
     }
+    animateAnimals(now);
     controls.update();
     renderer.render(scene, camera);
 }
