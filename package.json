@@ -1,9 +1,11 @@
 {
   "name": "3d-chess-game",
   "version": "1.0.0",
+  "type": "module",
   "description": "3D Chess Game with Three.js",
   "scripts": {
-    "build": "vite build"
+    "build": "vite build",
+    "test": "node --test"
   },
   "dependencies": {
     "chess.js": "^1.0.0-beta.6",

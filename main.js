@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { Chess } from 'chess.js';
+import { ANIMAL_ROLES, TEAM_NAMES, MoveLock, describeSquare } from './game-model.js';
 
 // ========== STATE ==========
 const chess = new Chess();
@@ -11,6 +12,9 @@ let aiThinking = false;
 let selectedSquare = null;
 let legalTargets = [];
 let lastMove = null;
+const moveLock = new MoveLock();
+const motionPreference = matchMedia('(prefers-reduced-motion: reduce)');
+let reduceMotion = motionPreference.matches;
 
 // ========== SCENE ==========
 const scene = new THREE.Scene();
@@ -28,6 +32,9 @@ renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.0;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 document.body.appendChild(renderer.domElement);
+renderer.domElement.tabIndex = 0;
+renderer.domElement.setAttribute('role', 'application');
+renderer.domElement.setAttribute('aria-label', 'Chessboard. Use arrow keys to move between squares and Enter or Space to select or move.');
 
 // Environment for PBR reflections
 const pmremGen = new THREE.PMREMGenerator(renderer);
@@ -43,6 +50,14 @@ controls.minPolarAngle = Math.PI * 0.08;
 controls.maxPolarAngle = Math.PI * 0.48;
 controls.target.set(0, 0, 0);
 controls.update();
+
+function applyMotionPreference(event) {
+    reduceMotion = event.matches;
+    controls.enableDamping = !reduceMotion;
+    if (reduceMotion) resetAnimalTransforms();
+}
+motionPreference.addEventListener?.('change', applyMotionPreference);
+applyMotionPreference(motionPreference);
 
 // Lights
 scene.add(new THREE.AmbientLight(0xffffff, 0.35));
@@ -163,12 +178,34 @@ const animalGeometries = {
     tusk: new THREE.ConeGeometry(0.035, 0.24, 10),
     mane: new THREE.TorusGeometry(0.25, 0.09, 8, 20),
     crown: new THREE.ConeGeometry(0.20, 0.20, 5),
-    feather: new THREE.SphereGeometry(0.11, 12, 8)
+    feather: new THREE.SphereGeometry(0.11, 12, 8),
+    teamRing: new THREE.RingGeometry(0.31, 0.42, 32),
+    teamNotch: new THREE.BoxGeometry(0.12, 0.025, 0.18)
 };
 
 function animalMaterial(hex, roughness=0.72) {
     return new THREE.MeshStandardMaterial({ color: hex, roughness, metalness: 0.02 });
 }
+
+function createPalette(light) {
+    return Object.freeze({
+        body: animalMaterial(light ? 0xf0d8a8 : 0x59677f),
+        inner: animalMaterial(light ? 0xe8a9a2 : 0x8695ad),
+        accent: animalMaterial(light ? 0x35a7c9 : 0x8e5ad7),
+        mane: animalMaterial(light ? 0xb66b2d : 0x252b38),
+        feather: animalMaterial(light ? 0x39c67a : 0xb64d72),
+        ivory: animalMaterial(0xfff2d2),
+        gold: animalMaterial(0xf5c84c, 0.42),
+        eye: animalMaterial(0x11151a, 0.35),
+        nose: animalMaterial(light ? 0x5b352c : 0x1a1d25, 0.55),
+        marker: new THREE.MeshBasicMaterial({ color: light ? 0x35d9ff : 0xad73ff, side: THREE.DoubleSide }),
+        markerNotch: new THREE.MeshBasicMaterial({ color: light ? 0xf5ead4 : 0x252b38 })
+    });
+}
+
+// Shared resources belong to the application, not individual animals. They are
+// disposed only during application teardown, so captures and rebuilds are safe.
+const animalPalettes = Object.freeze({ w: createPalette(true), b: createPalette(false) });
 
 function addPart(parent, geometry, material, position, scale=[1,1,1], rotation=[0,0,0], name='') {
     const mesh = new THREE.Mesh(geometry, material);
@@ -277,28 +314,31 @@ function makeLion(g, mats) {
 
 function pieceMesh(type, color) {
     const g = new THREE.Group();
+    const visual = new THREE.Group();
+    g.add(visual);
     const light = color === 'w';
-    const mats = {
-        body: animalMaterial(light ? 0xf0d8a8 : 0x59677f),
-        inner: animalMaterial(light ? 0xe8a9a2 : 0x8695ad),
-        accent: animalMaterial(light ? 0x35a7c9 : 0x8e5ad7),
-        mane: animalMaterial(light ? 0xb66b2d : 0x252b38),
-        feather: animalMaterial(light ? 0x39c67a : 0xb64d72),
-        ivory: animalMaterial(0xfff2d2),
-        gold: animalMaterial(0xf5c84c, 0.42),
-        eye: animalMaterial(0x11151a, 0.35),
-        nose: animalMaterial(light ? 0x5b352c : 0x1a1d25, 0.55)
-    };
+    const mats = animalPalettes[color];
 
-    if (type === 'p') makeRabbit(g, mats);
-    else if (type === 'r') makeElephant(g, mats);
-    else if (type === 'n') makeHorse(g, mats);
-    else if (type === 'b') makeDog(g, mats);
-    else if (type === 'q') makePeacock(g, mats);
-    else if (type === 'k') makeLion(g, mats);
+    if (type === 'p') makeRabbit(visual, mats);
+    else if (type === 'r') makeElephant(visual, mats);
+    else if (type === 'n') makeHorse(visual, mats);
+    else if (type === 'b') makeDog(visual, mats);
+    else if (type === 'q') makePeacock(visual, mats);
+    else if (type === 'k') makeLion(visual, mats);
+
+    const marker = addPart(g, animalGeometries.teamRing, mats.marker, [0, 0.015, 0], [1,1,1], [-Math.PI/2,0,0], 'team-marker');
+    marker.castShadow = false;
+    marker.receiveShadow = false;
+    const notch = addPart(g, animalGeometries.teamNotch, mats.markerNotch, [0, 0.022, 0.29], [1,1,1], [0,0,0], 'team-notch');
+    notch.castShadow = false;
+    notch.receiveShadow = false;
 
     g.rotation.y = light ? 0 : Math.PI;
     g.userData.pieceType = type;
+    g.userData.team = color;
+    g.userData.animal = ANIMAL_ROLES[type].animal;
+    g.userData.visual = visual;
+    g.userData.animParts = visual.userData.animParts;
     g.userData.phase = Math.random() * Math.PI * 2;
     g.userData.baseY = 0;
     return g;
@@ -337,26 +377,35 @@ function rebuildAllPieces(){
 const animations = [];
 function animateMove(from, to, captured){
     const mesh = pieceMap.get(from);
-    if (!mesh) return;
+    if (!mesh) return Promise.resolve();
     const start = mesh.position.clone();
     const end = squareToWorld(to);
-    const dur = 260;
+    const dur = reduceMotion ? 0 : 260;
     const t0 = performance.now();
-    animations.push({
+    if (captured){
+        const capMesh = pieceMap.get(to);
+        if (capMesh) piecesGroup.remove(capMesh);
+    }
+    pieceMap.delete(from);
+    pieceMap.set(to, mesh);
+    if (dur === 0) {
+        mesh.position.copy(end);
+        return Promise.resolve();
+    }
+    return new Promise(resolve => animations.push({
         update: (now) => {
             const t = Math.min(1, (now-t0)/dur);
             const ease = t<0.5 ? 2*t*t : 1 - Math.pow(-2*t+2,2)/2;
             mesh.position.lerpVectors(start, end, ease);
             mesh.position.y = Math.sin(t*Math.PI)*0.4; // little hop
-            return t >= 1;
+            if (t >= 1) {
+                mesh.position.copy(end);
+                resolve();
+                return true;
+            }
+            return false;
         }
-    });
-    pieceMap.delete(from);
-    if (captured){
-        const capMesh = pieceMap.get(to);
-        if (capMesh) piecesGroup.remove(capMesh);
-    }
-    pieceMap.set(to, mesh);
+    }));
 }
 
 // ========== HIGHLIGHTS ==========
@@ -391,13 +440,23 @@ const $toggleHist = document.getElementById('toggle-history');
 const $overlay = document.getElementById('overlay');
 const $overlayTitle = document.getElementById('overlay-title');
 const $overlayMsg = document.getElementById('overlay-msg');
+const $announcer = document.getElementById('announcer');
+const $guide = document.getElementById('animal-guide');
+const $guideTrigger = document.getElementById('animal-guide-trigger');
+const $guideClose = document.getElementById('animal-guide-close');
+
+function announce(message) {
+    $announcer.textContent = '';
+    requestAnimationFrame(() => { $announcer.textContent = message; });
+}
 
 function refreshUI(){
     if (aiThinking){ $status.textContent='AI thinking…'; $status.className='thinking'; }
     else if (chess.isGameOver()){ $status.textContent='Game Over'; $status.className=''; }
-    else if (chess.inCheck()){ $status.textContent=(chess.turn()==='w'?"White":"Black")+" in Check!"; $status.className='check'; }
-    else { $status.textContent=(chess.turn()==='w'?"White's":"Black's")+" Turn"; $status.className=''; }
-    $undo.disabled = chess.history().length===0 || aiThinking;
+    else if (chess.inCheck()){ $status.textContent=TEAM_NAMES[chess.turn()]+" in Check!"; $status.className='check'; }
+    else { $status.textContent=TEAM_NAMES[chess.turn()]+"'s Turn"; $status.className=''; }
+    $undo.disabled = chess.history().length===0 || aiThinking || moveLock.locked;
+    $reset.disabled = moveLock.locked;
     const h = chess.history();
     let html='';
     for (let i=0;i<h.length;i+=2){
@@ -434,7 +493,7 @@ renderer.domElement.addEventListener('pointerup', e => {
 });
 
 function handleClick(e){
-    if (aiThinking) return;
+    if (aiThinking || moveLock.locked) return;
     if (mode==='hvai' && chess.turn()==='b') return;
     mouse.x=(e.clientX/innerWidth)*2-1;
     mouse.y=-(e.clientY/innerHeight)*2+1;
@@ -442,23 +501,30 @@ function handleClick(e){
     const hits = raycaster.intersectObjects(boardGroup.children, false);
     const sqHit = hits.find(h => h.object.userData?.square);
     if (!sqHit) return;
-    const sq = sqHit.object.userData.square;
+    activateSquare(sqHit.object.userData.square);
+}
+
+function activateSquare(sq){
+    if (aiThinking || moveLock.locked) return;
+    if (mode==='hvai' && chess.turn()==='b') return;
     if (selectedSquare===sq){ selectedSquare=null; legalTargets=[]; }
     else if (selectedSquare && legalTargets.includes(sq)){
-        doMove(selectedSquare, sq);
+        void doMove(selectedSquare, sq);
         selectedSquare=null; legalTargets=[];
     } else {
         const p = chess.get(sq);
         if (p && p.color===chess.turn()){
             selectedSquare=sq;
             legalTargets=chess.moves({square:sq, verbose:true}).map(m=>m.to);
+            announce(`${TEAM_NAMES[p.color]} ${ANIMAL_ROLES[p.type].animal} ${ANIMAL_ROLES[p.type].role} selected on ${sq}`);
         } else { selectedSquare=null; legalTargets=[]; }
     }
     paintHL();
 }
 
-function doMove(from, to){
-    try {
+async function doMove(from, to){
+    const completed = await moveLock.run(async () => {
+      try {
         const captured = !!chess.get(to) || (chess.get(from)?.type==='p' && from[0]!==to[0]);
         const r = chess.move({ from, to, promotion:'q' });
         if (!r) return;
@@ -468,13 +534,18 @@ function doMove(from, to){
         if (isSpecial){
             rebuildAllPieces();
         } else {
-            animateMove(from, to, captured);
+            await animateMove(from, to, captured);
         }
         paintHL();
         refreshUI();
-        if (chess.isGameOver()){ setTimeout(showGameOver, 350); return; }
-        if (mode==='hvai' && chess.turn()==='b') setTimeout(triggerAI, 300);
-    } catch(err){ console.debug('move err', err); }
+        announce(`${ANIMAL_ROLES[r.piece].animal} moved from ${from} to ${to}`);
+        if (chess.isGameOver()){ showGameOver(); return; }
+        if (mode==='hvai' && chess.turn()==='b') setTimeout(triggerAI, reduceMotion ? 0 : 300);
+      } catch(err){ console.debug('move err', err); }
+      finally { updateKeyboardLabel(); }
+    });
+    refreshUI();
+    return completed;
 }
 
 // ========== AI ==========
@@ -529,7 +600,7 @@ $reset.addEventListener('click', resetGame);
 document.getElementById('overlay-new').addEventListener('click', ()=>{ $overlay.classList.remove('show'); resetGame(); });
 document.getElementById('overlay-close').addEventListener('click', ()=> $overlay.classList.remove('show'));
 $undo.addEventListener('click', ()=>{
-    if (aiThinking) return;
+    if (aiThinking || moveLock.locked) return;
     chess.undo();
     if (mode==='hvai' && chess.history().length>0 && chess.turn()==='b') chess.undo();
     lastMove=null; selectedSquare=null; legalTargets=[];
@@ -547,7 +618,43 @@ $toggleHist.addEventListener('click', ()=>{
     $toggleHist.textContent = $historyPanel.classList.contains('hidden')?'Show History':'Hide History';
 });
 
+function setGuideOpen(open) {
+    $guide.hidden = !open;
+    $guideTrigger.setAttribute('aria-expanded', String(open));
+    if (open) $guideClose.focus();
+    else $guideTrigger.focus();
+}
+$guideTrigger.addEventListener('click', () => setGuideOpen($guide.hidden));
+$guideClose.addEventListener('click', () => setGuideOpen(false));
+document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && !$guide.hidden) setGuideOpen(false);
+});
+
+let keyboardSquare = 'e2';
+function updateKeyboardLabel() {
+    const states = [];
+    if (keyboardSquare === selectedSquare) states.push('selected');
+    if (legalTargets.includes(keyboardSquare)) states.push('legal target');
+    renderer.domElement.setAttribute('aria-label', `${describeSquare(keyboardSquare, chess.get(keyboardSquare), states.join(', '))}. Use arrow keys to navigate and Enter or Space to act.`);
+}
+renderer.domElement.addEventListener('keydown', event => {
+    const direction = { ArrowLeft: [-1,0], ArrowRight: [1,0], ArrowUp: [0,1], ArrowDown: [0,-1] }[event.key];
+    if (direction) {
+        event.preventDefault();
+        const file = Math.max(0, Math.min(7, keyboardSquare.charCodeAt(0) - 97 + direction[0]));
+        const rank = Math.max(1, Math.min(8, Number(keyboardSquare[1]) + direction[1]));
+        keyboardSquare = `${String.fromCharCode(97 + file)}${rank}`;
+        updateKeyboardLabel();
+        announce(describeSquare(keyboardSquare, chess.get(keyboardSquare), legalTargets.includes(keyboardSquare) ? 'legal target' : ''));
+    } else if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        activateSquare(keyboardSquare);
+        updateKeyboardLabel();
+    }
+});
+
 function resetGame(){
+    if (moveLock.locked) return;
     chess.reset();
     selectedSquare=null; legalTargets=[]; lastMove=null; aiThinking=false;
     rebuildAllPieces(); paintHL(); refreshUI();
@@ -557,13 +664,15 @@ function resetGame(){
 }
 
 function animateAnimals(now){
+    if (reduceMotion) return;
     const time = now * 0.001;
     for (const animal of pieceMap.values()) {
+        const visual = animal.userData.visual;
         const phase = animal.userData.phase || 0;
         const parts = animal.userData.animParts || {};
         const breath = Math.sin(time * 2.2 + phase);
-        animal.scale.y = 1 + breath * 0.018;
-        animal.rotation.z = Math.sin(time * 1.4 + phase) * 0.018;
+        visual.scale.y = 1 + breath * 0.018;
+        visual.rotation.z = Math.sin(time * 1.4 + phase) * 0.018;
 
         if (parts.head) {
             parts.head.rotation.y = Math.sin(time * 1.15 + phase) * 0.12;
@@ -582,6 +691,25 @@ function animateAnimals(now){
         }
     }
 }
+
+function resetAnimalTransforms() {
+    for (const animal of pieceMap.values()) {
+        const visual = animal.userData.visual;
+        visual.scale.y = 1;
+        visual.rotation.z = 0;
+        const parts = animal.userData.animParts || {};
+        if (parts.head) { parts.head.rotation.y = 0; parts.head.rotation.z = 0; }
+        if (parts.ears) parts.ears.forEach(ear => { ear.rotation.x = 0; });
+        if (parts.tail) parts.tail.rotation.y = 0;
+        if (parts.trunk) parts.trunk.rotation.z = 0;
+    }
+}
+
+function disposeSharedAnimalResources() {
+    Object.values(animalGeometries).forEach(geometry => geometry.dispose());
+    Object.values(animalPalettes).forEach(palette => Object.values(palette).forEach(material => material.dispose()));
+}
+addEventListener('pagehide', disposeSharedAnimalResources, { once: true });
 
 // ========== BOOT ==========
 addEventListener('resize', ()=>{
@@ -604,4 +732,5 @@ function loop(){
 rebuildAllPieces();
 paintHL();
 refreshUI();
+updateKeyboardLabel();
 loop();
