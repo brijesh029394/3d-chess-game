@@ -7,7 +7,7 @@ Interactive animated-animal 3D chess built with Three.js + chess.js. Auto-deploy
 - Pawns: rabbits
 - Rooks: elephants
 - Knights: horses
-- Bishops: foxes
+- Bishops: dogs
 - Queens: peacocks
 - Kings: lions
 

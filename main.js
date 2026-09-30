@@ -229,18 +229,18 @@ function makeHorse(g, mats) {
     g.userData.animParts = { head };
 }
 
-function makeFox(g, mats) {
+function makeDog(g, mats) {
     addPart(g, animalGeometries.sphere, mats.body, [0,0.45,0], [0.28,0.34,0.31]);
     const head = addPart(g, animalGeometries.sphere, mats.body, [0,0.78,0.12], [0.28,0.27,0.25], [0,0,0], 'head');
     for (const x of [-0.16,0.16]) {
-        addPart(g, animalGeometries.ear, mats.body, [x,1.06,0.08], [0.85,0.95,0.72], [0,0,x*1.5], 'ear');
+        addPart(g, animalGeometries.sphere, mats.mane, [x,0.84,0.10], [0.10,0.21,0.07], [0,0,x*1.7], 'ear');
     }
     addPart(g, animalGeometries.sphere, mats.ivory, [0,0.72,0.32], [0.18,0.13,0.17]);
     addFace(g, 0.82, 0.37, mats, 0.10);
-    const tail = addPart(g, animalGeometries.sphere, mats.body, [0,0.42,-0.34], [0.19,0.19,0.42], [0.65,0,0], 'tail');
-    addPart(tail, animalGeometries.sphere, mats.ivory, [0,0,-0.85], [0.85,0.85,0.40]);
+    addPart(g, animalGeometries.sphere, mats.accent, [0,0.58,0.25], [0.22,0.06,0.06], [0,0,0], 'collar');
+    const tail = addPart(g, animalGeometries.leg, mats.body, [0,0.48,-0.31], [0.75,1.45,0.75], [0.90,0,0], 'tail');
     addFourLegs(g, mats, 0.19, 0.18, 0.17);
-    g.userData.animParts = { head, tail };
+    g.userData.animParts = { head, tail, ears: g.children.filter(x=>x.name==='ear') };
 }
 
 function makePeacock(g, mats) {
@@ -293,7 +293,7 @@ function pieceMesh(type, color) {
     if (type === 'p') makeRabbit(g, mats);
     else if (type === 'r') makeElephant(g, mats);
     else if (type === 'n') makeHorse(g, mats);
-    else if (type === 'b') makeFox(g, mats);
+    else if (type === 'b') makeDog(g, mats);
     else if (type === 'q') makePeacock(g, mats);
     else if (type === 'k') makeLion(g, mats);
 
