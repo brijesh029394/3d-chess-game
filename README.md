@@ -39,3 +39,17 @@ npm run build
 
 ## Play
 Live: https://brijesh029394.github.io/3d-chess-game/
+
+## Computer opponent
+
+The computer runs a bundled chess.js-based search in a module worker, with
+one-, two-, and three-ply search for Easy, Medium, and Hard. It needs no external
+engine download. This is a casual opponent, not Stockfish-strength play.
+Resetting or switching game modes cancels pending searches.
+
+Pawns can promote to any of the four legal roles. The promotion dialog can be
+cancelled with Escape. A yellow marker identifies the keyboard's active square.
+
+For browser regression checks, start `npx vite --host 0.0.0.0` in another terminal,
+then run `npx playwright install chromium` and `npm run test:browser`.
+Set `CHESS_URL` to check a production preview instead of the development server.

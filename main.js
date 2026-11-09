@@ -12,6 +12,9 @@ let aiThinking = false;
 let selectedSquare = null;
 let legalTargets = [];
 let lastMove = null;
+let gameVersion = 0;
+let aiTimer = null;
+let promotionPending = false;
 const moveLock = new MoveLock();
 const motionPreference = matchMedia('(prefers-reduced-motion: reduce)');
 let reduceMotion = motionPreference.matches;
@@ -20,7 +23,8 @@ let reduceMotion = motionPreference.matches;
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x141418);
 
-const camera = new THREE.PerspectiveCamera(40, innerWidth/innerHeight, 0.1, 1000);
+function boardFov() { return THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(20)) / Math.min(1, innerWidth / innerHeight))); }
+const camera = new THREE.PerspectiveCamera(boardFov(), innerWidth/innerHeight, 0.1, 1000);
 camera.position.set(0, 11, 11);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -57,7 +61,7 @@ function applyMotionPreference(event) {
     if (reduceMotion) resetAnimalTransforms();
 }
 motionPreference.addEventListener?.('change', applyMotionPreference);
-applyMotionPreference(motionPreference);
+
 
 // Lights
 scene.add(new THREE.AmbientLight(0xffffff, 0.35));
@@ -308,7 +312,7 @@ function makeLion(g, mats) {
     addPart(g, animalGeometries.crown, mats.gold, [0,1.18,0.09], [0.9,0.9,0.9]);
     addFourLegs(g, mats, 0.19, 0.20, 0.18);
     const tail = addPart(g, animalGeometries.leg, mats.body, [0,0.48,-0.34], [0.68,1.45,0.68], [0.9,0,0], 'tail');
-    addPart(tail, animalGeometries.sphere, mats.mane, [0,-0.25,0], [1.25,1.25,1.25]);
+    addPart(tail, animalGeometries.sphere, mats.mane, [0,-0.25,0], [0.12,0.12,0.12]);
     g.userData.animParts = { head, tail };
 }
 
@@ -408,6 +412,14 @@ function animateMove(from, to, captured){
     }));
 }
 
+const keyboardCursor = new THREE.Mesh(new THREE.RingGeometry(0.40, 0.47, 4), new THREE.MeshBasicMaterial({ color: 0xf6d365, side: THREE.DoubleSide }));
+keyboardCursor.rotation.x = -Math.PI / 2;
+keyboardCursor.rotation.z = Math.PI / 4;
+keyboardCursor.visible = false;
+scene.add(keyboardCursor);
+renderer.domElement.addEventListener('focus', () => { keyboardCursor.visible = true; updateKeyboardLabel(); });
+renderer.domElement.addEventListener('blur', () => { keyboardCursor.visible = false; });
+
 // ========== HIGHLIGHTS ==========
 function clearHL(){ for (const n in squares) squares[n].material.emissive?.setHex(0x000000); }
 function paintHL(){
@@ -457,6 +469,7 @@ function refreshUI(){
     else { $status.textContent=TEAM_NAMES[chess.turn()]+"'s Turn"; $status.className=''; }
     $undo.disabled = chess.history().length===0 || aiThinking || moveLock.locked;
     $reset.disabled = moveLock.locked;
+    $mode.disabled = moveLock.locked || promotionPending;
     const h = chess.history();
     let html='';
     for (let i=0;i<h.length;i+=2){
@@ -470,20 +483,22 @@ function refreshUI(){
 function showGameOver(){
     if (!chess.isGameOver()) return;
     let title, msg;
-    if (chess.isCheckmate()){ const w = chess.turn()==='w'?'Black':'White'; title='🏆 Checkmate!'; msg=w+' wins by checkmate.'; }
+    if (chess.isCheckmate()){ const w = TEAM_NAMES[chess.turn()==='w'?'b':'w']; title='🏆 Checkmate!'; msg=w+' wins by checkmate.'; }
     else if (chess.isStalemate()){ title='🤝 Stalemate'; msg='Draw — no legal moves.'; }
     else if (chess.isThreefoldRepetition()){ title='🤝 Draw'; msg='Threefold repetition.'; }
     else if (chess.isInsufficientMaterial()){ title='🤝 Draw'; msg='Insufficient material.'; }
     else { title='🤝 Draw'; msg='50-move rule.'; }
     $overlayTitle.textContent=title; $overlayMsg.textContent=msg;
     $overlay.classList.add('show');
+    $overlay.showModal();
 }
 
 // ========== INPUT ==========
 const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
 let dragStart=null;
-renderer.domElement.addEventListener('pointerdown', e => { dragStart = { x:e.clientX, y:e.clientY }; });
+renderer.domElement.addEventListener('pointercancel', () => { dragStart = null; });
+renderer.domElement.addEventListener('pointerdown', e => { if (e.button !== 0) return; dragStart = { x:e.clientX, y:e.clientY }; });
 renderer.domElement.addEventListener('pointerup', e => {
     if (!dragStart) return;
     const dx=Math.abs(e.clientX-dragStart.x), dy=Math.abs(e.clientY-dragStart.y);
@@ -493,7 +508,7 @@ renderer.domElement.addEventListener('pointerup', e => {
 });
 
 function handleClick(e){
-    if (aiThinking || moveLock.locked) return;
+    if (aiThinking || moveLock.locked || promotionPending || chess.isGameOver()) return;
     if (mode==='hvai' && chess.turn()==='b') return;
     mouse.x=(e.clientX/innerWidth)*2-1;
     mouse.y=-(e.clientY/innerHeight)*2+1;
@@ -505,8 +520,10 @@ function handleClick(e){
 }
 
 function activateSquare(sq){
-    if (aiThinking || moveLock.locked) return;
+    if (aiThinking || moveLock.locked || promotionPending || chess.isGameOver()) return;
     if (mode==='hvai' && chess.turn()==='b') return;
+    keyboardSquare = sq;
+    updateKeyboardLabel();
     if (selectedSquare===sq){ selectedSquare=null; legalTargets=[]; }
     else if (selectedSquare && legalTargets.includes(sq)){
         void doMove(selectedSquare, sq);
@@ -522,13 +539,23 @@ function activateSquare(sq){
     paintHL();
 }
 
-async function doMove(from, to){
+async function doMove(from, to, promotion){
+    if (!promotion && chess.get(from)?.type === 'p' && /[18]$/.test(to)) {
+        promotionPending = true;
+        refreshUI();
+        const version = gameVersion;
+        promotion = await choosePromotion();
+        promotionPending = false;
+        refreshUI();
+        if (version !== gameVersion || !promotion) return;
+    }
     const completed = await moveLock.run(async () => {
       try {
         const captured = !!chess.get(to) || (chess.get(from)?.type==='p' && from[0]!==to[0]);
-        const r = chess.move({ from, to, promotion:'q' });
+        const r = chess.move({ from, to, promotion: promotion || 'q' });
         if (!r) return;
         lastMove = { from, to };
+        refreshUI();
         // for promotion / castling / en passant we simplify with a full rebuild after animation
         const isSpecial = r.flags.includes('e') || r.flags.includes('k') || r.flags.includes('q') || r.flags.includes('p');
         if (isSpecial){
@@ -540,7 +567,10 @@ async function doMove(from, to){
         refreshUI();
         announce(`${ANIMAL_ROLES[r.piece].animal} moved from ${from} to ${to}`);
         if (chess.isGameOver()){ showGameOver(); return; }
-        if (mode==='hvai' && chess.turn()==='b') setTimeout(triggerAI, reduceMotion ? 0 : 300);
+        if (mode==='hvai' && chess.turn()==='b') {
+            aiThinking = true;
+            aiTimer = setTimeout(triggerAI, reduceMotion ? 0 : 300);
+        }
       } catch(err){ console.debug('move err', err); }
       finally { updateKeyboardLabel(); }
     });
@@ -549,67 +579,86 @@ async function doMove(from, to){
 }
 
 // ========== AI ==========
-let stockfish=null, aiResolve=null;
-async function initAI(){
-    if (stockfish) return;
-    const workerCode = `
-        importScripts('https://cdn.jsdelivr.net/npm/stockfish.js@10.0.2/stockfish.js');
-        const engine = STOCKFISH();
-        engine.onmessage = e => postMessage(e);
-        onmessage = e => engine.postMessage(e.data);
-    `;
-    const blob = new Blob([workerCode], { type: 'application/javascript' });
-    stockfish = new Worker(URL.createObjectURL(blob));
-    stockfish.onmessage = (e) => {
-        const line = typeof e.data==='string' ? e.data : (e.data?.data||'');
-        if (line.startsWith('bestmove') && aiResolve){
-            const m = line.split(' ')[1];
-            const from = m.slice(0,2), to = m.slice(2,4);
-            const promotion = m.length>4 ? m[4] : undefined;
-            const r=aiResolve; aiResolve=null;
-            r({from,to,promotion});
-        }
-    };
-    stockfish.postMessage('uci');
-    stockfish.postMessage('isready');
+let engineWorker = null, aiResolve = null;
+function cancelAI() {
+    clearTimeout(aiTimer);
+    engineWorker?.terminate();
+    engineWorker = null;
+    aiResolve?.(null);
+    aiResolve = null;
+    aiThinking = false;
 }
-function bestMove(fen){
-    return new Promise(res=>{
-        aiResolve = res;
-        const skill = difficulty==='easy'?3 : difficulty==='medium'?10 : 20;
-        const movetime = difficulty==='easy'?250 : difficulty==='medium'?800 : 1800;
-        stockfish.postMessage('ucinewgame');
-        stockfish.postMessage(`setoption name Skill Level value ${skill}`);
-        stockfish.postMessage(`position fen ${fen}`);
-        stockfish.postMessage(`go movetime ${movetime}`);
-    });
+function initAI() {
+    if (engineWorker) return;
+    engineWorker = new Worker(new URL('./ai-worker.js', import.meta.url), { type: 'module' });
 }
 async function triggerAI(){
+    const version = gameVersion;
+    if (mode !== 'hvai' || chess.turn() !== 'b' || chess.isGameOver()) return;
     aiThinking = true; refreshUI();
-    if (!stockfish) await initAI();
-    await new Promise(r=>setTimeout(r,50));
+    let timeout;
     try {
-        const mv = await bestMove(chess.fen());
+        initAI();
+        const mv = await new Promise((resolve, reject) => {
+            aiResolve = resolve;
+            engineWorker.onmessage = e => resolve(e.data);
+            engineWorker.onerror = () => reject(new Error('Computer unavailable'));
+            timeout = setTimeout(() => reject(new Error('Computer timed out')), 10000);
+            engineWorker.postMessage({ fen: chess.fen(), difficulty });
+        });
+        if (version !== gameVersion) return;
         aiThinking = false;
-        if (mv) doMove(mv.from, mv.to); else refreshUI();
-    } catch(e){ aiThinking=false; refreshUI(); console.error(e); }
+        if (mv) await doMove(mv.from, mv.to, mv.promotion);
+    } catch(e) {
+        if (version !== gameVersion) return;
+        cancelAI();
+        // A failed worker must not leave the game stuck on the computer's turn.
+        const moves = chess.moves({ verbose: true });
+        if (moves.length) {
+            announce('Computer engine unavailable; using a legal fallback move.');
+            await doMove(moves[0].from, moves[0].to, moves[0].promotion);
+        }
+    } finally {
+        clearTimeout(timeout);
+        if (version === gameVersion) { aiResolve = null; aiThinking = false; refreshUI(); }
+    }
 }
+
+let promotionResolve;
+function choosePromotion() {
+    const dialog = document.getElementById('promotion-dialog');
+    dialog.showModal();
+    dialog.querySelector('button').focus();
+    return new Promise(resolve => { promotionResolve = resolve; });
+}
+const promotionDialog = document.getElementById('promotion-dialog');
+$overlay.addEventListener('cancel', () => { $overlay.classList.remove('show'); });
+promotionDialog.addEventListener('click', event => {
+    const choice = event.target.closest('[data-promotion]')?.dataset.promotion;
+    if (!choice) return;
+    promotionDialog.close();
+    promotionResolve?.(choice);
+    promotionResolve = null;
+});
+promotionDialog.addEventListener('cancel', () => {
+    promotionResolve?.(null);
+    promotionResolve = null;
+});
 
 // ========== CONTROLS ==========
 $reset.addEventListener('click', resetGame);
-document.getElementById('overlay-new').addEventListener('click', ()=>{ $overlay.classList.remove('show'); resetGame(); });
-document.getElementById('overlay-close').addEventListener('click', ()=> $overlay.classList.remove('show'));
+document.getElementById('overlay-new').addEventListener('click', ()=>{ $overlay.close(); $overlay.classList.remove('show'); resetGame(); });
+document.getElementById('overlay-close').addEventListener('click', ()=> { $overlay.close(); $overlay.classList.remove('show'); renderer.domElement.focus(); });
 $undo.addEventListener('click', ()=>{
     if (aiThinking || moveLock.locked) return;
     chess.undo();
     if (mode==='hvai' && chess.history().length>0 && chess.turn()==='b') chess.undo();
     lastMove=null; selectedSquare=null; legalTargets=[];
-    rebuildAllPieces(); paintHL(); refreshUI();
+    rebuildAllPieces(); paintHL(); refreshUI(); updateKeyboardLabel();
 });
 $mode.addEventListener('change', e=>{
     mode=e.target.value;
     $diff.style.display = mode==='hvai'?'':'none';
-    if (mode==='hvai') initAI();
     resetGame();
 });
 $diff.addEventListener('change', e=>{ difficulty=e.target.value; });
@@ -632,6 +681,8 @@ document.addEventListener('keydown', event => {
 
 let keyboardSquare = 'e2';
 function updateKeyboardLabel() {
+    keyboardCursor.position.copy(squareToWorld(keyboardSquare));
+    keyboardCursor.position.y = 0.025;
     const states = [];
     if (keyboardSquare === selectedSquare) states.push('selected');
     if (legalTargets.includes(keyboardSquare)) states.push('legal target');
@@ -655,12 +706,21 @@ renderer.domElement.addEventListener('keydown', event => {
 
 function resetGame(){
     if (moveLock.locked) return;
+    gameVersion += 1;
+    cancelAI();
+    promotionResolve?.(null);
+    promotionDialog.close();
+    promotionPending = false;
+    $overlay.close();
+    $overlay.classList.remove('show');
     chess.reset();
+    keyboardSquare = 'e2';
     selectedSquare=null; legalTargets=[]; lastMove=null; aiThinking=false;
     rebuildAllPieces(); paintHL(); refreshUI();
     controls.reset();
     camera.position.set(0,11,11);
     controls.update();
+    updateKeyboardLabel();
 }
 
 function animateAnimals(now){
@@ -714,6 +774,7 @@ addEventListener('pagehide', disposeSharedAnimalResources, { once: true });
 // ========== BOOT ==========
 addEventListener('resize', ()=>{
     camera.aspect = innerWidth/innerHeight;
+    camera.fov = boardFov();
     camera.updateProjectionMatrix();
     renderer.setSize(innerWidth, innerHeight);
 });
@@ -730,6 +791,7 @@ function loop(){
 }
 
 rebuildAllPieces();
+applyMotionPreference(motionPreference);
 paintHL();
 refreshUI();
 updateKeyboardLabel();
