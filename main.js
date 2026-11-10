@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { CaptureEffects } from './capture-effects.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { Chess } from 'chess.js';
@@ -21,6 +22,7 @@ let reduceMotion = motionPreference.matches;
 
 // ========== SCENE ==========
 const scene = new THREE.Scene();
+const captureEffects = new CaptureEffects(scene);
 scene.background = new THREE.Color(0x141418);
 
 function boardFov() { return THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(20)) / Math.min(1, innerWidth / innerHeight))); }
@@ -58,7 +60,7 @@ controls.update();
 function applyMotionPreference(event) {
     reduceMotion = event.matches;
     controls.enableDamping = !reduceMotion;
-    if (reduceMotion) resetAnimalTransforms();
+    if (reduceMotion) { resetAnimalTransforms(); captureEffects.clear(); }
 }
 motionPreference.addEventListener?.('change', applyMotionPreference);
 
@@ -444,6 +446,19 @@ function paintHL(){
 const $status = document.getElementById('status');
 const $undo = document.getElementById('undo-btn');
 const $reset = document.getElementById('reset-btn');
+const $sound = document.getElementById('sound-btn');
+function refreshSoundButton() {
+    $sound.textContent = captureEffects.enabled ? '🔊 Sound On' : '🔇 Sound Off';
+    $sound.setAttribute('aria-pressed', String(captureEffects.enabled));
+}
+$sound.addEventListener('click', () => {
+    captureEffects.setEnabled(!captureEffects.enabled);
+    refreshSoundButton();
+});
+// Browsers require a real user gesture before they permit audio playback.
+document.addEventListener('pointerdown', () => captureEffects.unlockAudio(), { passive: true });
+document.addEventListener('keydown', () => captureEffects.unlockAudio());
+refreshSoundButton();
 const $mode = document.getElementById('mode-select');
 const $diff = document.getElementById('difficulty-select');
 const $historyList = document.getElementById('history-list');
@@ -554,6 +569,10 @@ async function doMove(from, to, promotion){
         const captured = !!chess.get(to) || (chess.get(from)?.type==='p' && from[0]!==to[0]);
         const r = chess.move({ from, to, promotion: promotion || 'q' });
         if (!r) return;
+        if (r.captured) {
+            const capturedSquare = r.flags.includes('e') ? to[0] + from[1] : to;
+            captureEffects.capture(squareToWorld(capturedSquare), r.color === 'w' ? 'b' : 'w', reduceMotion);
+        }
         lastMove = { from, to };
         refreshUI();
         // for promotion / castling / en passant we simplify with a full rebuild after animation
@@ -651,6 +670,7 @@ document.getElementById('overlay-new').addEventListener('click', ()=>{ $overlay.
 document.getElementById('overlay-close').addEventListener('click', ()=> { $overlay.close(); $overlay.classList.remove('show'); renderer.domElement.focus(); });
 $undo.addEventListener('click', ()=>{
     if (aiThinking || moveLock.locked) return;
+    captureEffects.clear();
     chess.undo();
     if (mode==='hvai' && chess.history().length>0 && chess.turn()==='b') chess.undo();
     lastMove=null; selectedSquare=null; legalTargets=[];
@@ -706,6 +726,7 @@ renderer.domElement.addEventListener('keydown', event => {
 
 function resetGame(){
     if (moveLock.locked) return;
+    captureEffects.clear();
     gameVersion += 1;
     cancelAI();
     promotionResolve?.(null);
@@ -785,6 +806,7 @@ function loop(){
     for (let i=animations.length-1;i>=0;i--){
         if (animations[i].update(now)) animations.splice(i,1);
     }
+    captureEffects.update(now);
     animateAnimals(now);
     controls.update();
     renderer.render(scene, camera);

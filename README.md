@@ -53,3 +53,13 @@ cancelled with Escape. A yellow marker identifies the keyboard's active square.
 For browser regression checks, start `npx vite --host 0.0.0.0` in another terminal,
 then run `npx playwright install chromium` and `npm run test:browser`.
 Set `CHESS_URL` to check a production preview instead of the development server.
+
+## Capture effects
+
+Taking a piece plays a short synthesized impact sound and a 3D burst with an
+expanding ring in the captured team's color. En passant effects appear on the
+captured pawn's square. Quiet moves do not trigger the effect.
+Use **Sound On / Sound Off** to toggle capture audio; the preference is saved
+on this device. Audio starts after a keyboard or pointer interaction, according
+to browser autoplay rules. Reduced motion skips the burst, while sound remains
+independently controlled. Undo and New Game clear active visual effects.
