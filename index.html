@@ -18,6 +18,8 @@
             --radius: 8px;
         }
         * { box-sizing: border-box; }
+        html, body { width: 100%; height: 100%; }
+        canvas { display: block; }
         body {
             margin: 0; overflow: hidden;
             background: var(--bg);
@@ -105,7 +107,7 @@
         }
 
         #overlay {
-            position: fixed; inset: 0;
+            position: fixed; inset: 0; width: 100%; height: 100%; max-width: none; max-height: none; margin: 0; border: 0;
             background: rgba(0,0,0,0.5); backdrop-filter: blur(4px);
             display: none; align-items: center; justify-content: center;
             z-index: 10;
@@ -128,6 +130,17 @@
         }
         @media (prefers-reduced-motion: reduce) {
             * { transition: none !important; }
+        }
+        dialog { color: var(--text); background: #202028; border: 1px solid #666; border-radius: 12px; max-width: calc(100vw - 24px); }
+        dialog::backdrop { background: #0009; }
+        .promotion-options { display: flex; flex-wrap: wrap; gap: 8px; }
+        #controls { width: max-content; }
+        @media (max-width: 640px) {
+            #hud { top: 8px; left: 8px; max-width: calc(100vw - 16px); }
+            #hud h1 { font-size: 16px; }
+            #controls { width: calc(100vw - 16px); max-width: none; bottom: calc(8px + env(safe-area-inset-bottom)); padding: 8px; gap: 6px; }
+            #controls > * { flex: 1 1 auto; padding: 8px; }
+            #mode-select { flex-basis: 55%; }
         }
     </style>
 </head>
@@ -172,7 +185,7 @@
         <button id="reset-btn" aria-label="New game">🔄 New Game</button>
     </div>
 
-    <div id="overlay" role="dialog" aria-modal="true">
+    <dialog id="overlay" aria-modal="true" aria-labelledby="overlay-title" aria-describedby="overlay-msg">
         <div class="card">
             <h2 id="overlay-title">Game Over</h2>
             <p id="overlay-msg"></p>
@@ -181,8 +194,18 @@
                 <button id="overlay-close" class="ghost">Close</button>
             </div>
         </div>
-    </div>
+    </dialog>
 
+    <dialog id="promotion-dialog" aria-labelledby="promotion-title">
+        <h2 id="promotion-title">Promote your rabbit</h2>
+        <p>Choose a new role. Escape cancels the move.</p>
+        <div class="promotion-options">
+            <button data-promotion="q">Peacock · Queen</button>
+            <button data-promotion="r">Elephant · Rook</button>
+            <button data-promotion="b">Dog · Bishop</button>
+            <button data-promotion="n">Horse · Knight</button>
+        </div>
+    </dialog>
     <script type="module" src="/main.js"></script>
 </body>
 </html>
